@@ -1,0 +1,3 @@
+unstable_features                       =   true
+full_docs                               =   true
+build_on_save                           =   true
