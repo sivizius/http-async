@@ -7,6 +7,7 @@
 //! ```
 //! in you project `Cargo.toml`-file.
 //! # Licence
+//! MIT
 
 #![warn(clippy::all)]
 #![allow(clippy::suspicious_else_formatting)]
@@ -116,7 +117,11 @@ where
   =   TcpListener::bind ( &address   )
         .await
         .expect ( "Failed to bind"  );
-  println!("Waiting for connections");
+  println!
+  (
+    "Waiting for connections on {}",
+    address,
+  );
   loop
   {
     let     this                        =   this.clone    ( );
