@@ -120,6 +120,11 @@ impl          Method
             .and_then ( | method  | Request::ifChar ( 'A',  &mut stream,  method  ) )
             .and_then ( | method  | Request::ifChar ( 'C',  &mut stream,  method  ) )
             .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) ),
+      Some  ( char  )
+      =>  {
+            println!("Char: {}", char);
+            None
+          },
       _
       =>  None,
     }

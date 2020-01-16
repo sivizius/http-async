@@ -2,6 +2,7 @@ use
 {
   super::
   {
+    Content,
     KeyValuePair,
     status::
     {
@@ -143,18 +144,18 @@ impl          Response
   pub fn        content
   (
     mut self,
-    contentType:                        &'static str,
-    contentBody:                        Vec < u8  >,
+    this:                               Content,
   )
   ->  Self
   {
-    let     length                      =   contentBody.len ( );
-    self.content                        =   contentBody;
+    let     length                      =   this.contentBody.len ( );
+    self.content                        =   this.contentBody;
+    self.status                         =   this.statusCode;
     self
       .addHeader
       (
         "Content-Type".to_owned(),
-        contentType.to_owned(),
+        this.contentType.to_owned(),
       )
       .addHeader
       (

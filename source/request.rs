@@ -3,6 +3,10 @@ use
   super::
   {
     KeyValuePair,
+    header::
+    {
+      Header,
+    },
     method::
     {
       Method,
@@ -25,6 +29,13 @@ use
     prelude::*,
     task,
   },
+  std::
+  {
+    str::
+    {
+      FromStr,
+    },
+  },
 };
 
 /// Hyper Text Transfer Protocol Request.
@@ -43,7 +54,7 @@ pub struct    Request
   /// List of Header Key Value Pairs.
   pub header:                           Vec < KeyValuePair  >,
   /// Content of Request.
-  pub content:                          String,
+  pub content:                          Vec < u8            >,
 }
 
 /// Constructor for a dummy `Request`.
@@ -58,7 +69,7 @@ pub fn  Request ()
     query:                                Vec::new(),
     version:                              Version::Dummy,
     header:                               Vec::new(),
-    content:                              "".to_owned(),
+    content:                              Vec::new(),
   }
 }
 
@@ -135,11 +146,11 @@ impl          Request
   /// Parse `TcpStream` as Hyper Text Transfer Protocol Request.
   ///
   /// # Arguments
-  /// * `stream`                          – Transmission Control Protocol Stream.
+  /// * `stream`                         – Transmission Control Protocol Stream.
   pub async fn  parse
   (
     mut self,
-    mut stream:                           &mut TcpStream,
+    mut stream:                          &mut TcpStream,
   )
   ->  Result
       <
@@ -147,38 +158,192 @@ impl          Request
         String,
       >
   {
-    if  let Some  ( method  )             =   Method::parse   ( &mut stream                       ).await
+    if  let Some  ( method  )           =   Method::parse   ( &mut stream                       ).await
     {
-      self.method                         =   method;
-      if let Some ( path )                =   Path::parse     ( &mut stream,  self.querySeperator ).await
+      self.method                       =   method;
+      if let Some ( path )              =   Path::parse     ( &mut stream,  self.querySeperator ).await
       {
-        println!
-        (
-          "{}?({:?})",
-          path.path,
-          path.query,
-        );
-        self.path                         =   path.path;
-        self.query                        =   path.query;
-        if let Some ( version )           =   Version::parse  ( &mut stream                       ).await
+        self.path                       =   path.path;
+        self.query                      =   path.query;
+        if let Some ( version )         =   Version::parse  ( &mut stream                       ).await
         {
-          self.version                    =   version;
-          //  ToDo: Parse Header and Content.
-          Ok  ( self  )
+          self.version                  =   version;
+          let mut error                 =   Some  ( "Could not parse List of headers".to_owned  ( ) );
+          let mut length                =   0;
+          while let Ok  ( entry )       =   Header::parse   ( &mut stream                       ).await
+          {
+            if  length  < 32
+            {
+              if  let Some  ( entry )   =   entry
+              {
+                self
+                  .header
+                  .push ( entry );
+              }
+              else
+              {
+                error                   =   None;
+                break;
+              }
+            }
+            else
+            {
+              error                     =   Some  ( "Too many Header Entries, Slow Lorris Attack?".to_owned  ( ) );
+              break;
+            }
+            length                      +=  1
+          }
+          if        let Some  ( message )
+                    =   error
+          {
+            Err ( message )
+          }
+          else  if  let Some  ( entry )
+                    =   self
+                          .header
+                          .iter()
+                          .find
+                          (
+                            | entry |
+                            entry.key ==  "Content-Length"
+                          )
+          {
+            if  let Ok  ( length  )     =   usize::from_str ( &entry.value  )
+            {
+              if  length  < 0x0008_0000
+              {
+                let mut buffer          =   vec!  [ 0u8;  length  ];
+                if  let Ok  ( size  )   =   stream.read ( &mut buffer ).await
+                {
+                  if  let Ok  ( text  )
+                      =   String::from_utf8 ( buffer.clone  ( ) )
+                  {
+                    println!
+                    (
+                      "\n<{}> {}?({:?})\n{}Length: {}\nContent:\n»{}« ({:?})",
+                      self.method,
+                      self.path,
+                      self.query,
+                      self
+                        .header
+                        .iter()
+                        .fold
+                        (
+                          "".to_owned(),
+                          | mut text, entry |
+                          {
+                            text
+                              .push_str
+                              (
+                                &format!
+                                (
+                                  "→{} = {}\n",
+                                  entry.key,
+                                  entry.value,
+                                )
+                              );
+                            text
+                          }
+                        ),
+                        length,
+                        text,
+                        buffer,
+                    );
+                  }
+                  self
+                    .content            =   buffer;
+                  if  size  ==  length
+                  {
+                    Ok  ( self  )
+                  }
+                  else
+                  {
+                    Err
+                    (
+                      format!
+                      (
+                        "Expected Content with {} bytes, but received only {}",
+                        length,
+                        size,
+                      )
+                    )
+                  }
+                }
+                else
+                {
+                  Err
+                  (
+                    format!
+                    (
+                      "Could not read {} bytes of content",
+                      length,
+                    )
+                  )
+                }
+              }
+              else
+              {
+                Err
+                (
+                  format!
+                  (
+                    "To avoid Denial of Service by Remote Allocation of a Buffer, the Upper Limit is below {} bytes",
+                    length,
+                  )
+                )
+              }
+            }
+            else
+            {
+              Err ( "Could not parse length of content".to_owned  ( ) )
+            }
+          }
+          else
+          {
+            println!
+            (
+              "\n<{}> {}?({:?})\n{}No Content.",
+              self.method,
+              self.path,
+              self.query,
+              self
+                .header
+                .iter()
+                .fold
+                (
+                  "".to_owned(),
+                  | mut text, entry |
+                  {
+                    text
+                      .push_str
+                      (
+                        &format!
+                        (
+                          "→{} = {}\n",
+                          entry.key,
+                          entry.value,
+                        )
+                      );
+                    text
+                  }
+                ),
+            );
+            Ok    ( self  )
+          }
         }
         else
         {
-          Err ( "Could not parse version".to_owned  ( ) )
+          Err       ( "Could not parse version".to_owned            ( ) )
         }
       }
       else
       {
-        Err   ( "Could not parse path".to_owned     ( ) )
+        Err         ( "Could not parse path".to_owned               ( ) )
       }
     }
     else
     {
-      Err     ( "Could not parse method.".to_owned  ( ) )
+      Err           ( "Could not parse method.".to_owned            ( ) )
     }
   }
 }

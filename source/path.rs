@@ -25,14 +25,6 @@ use
   },
 };
 
-/// State of the Parser parsing a Path.
-enum          PathState
-{
-  Start,
-  Key,
-  Value,
-}
-
 /// Path and Query to a Resource.
 pub struct    Path
 {
@@ -44,7 +36,7 @@ pub struct    Path
 
 impl          Path
 {
-  /// Try to parse path from from Transmission Control Protocol Stream.
+  /// Try to parse Path from from Transmission Control Protocol Stream.
   ///
   /// # Arguments
   /// * `stream`                        – Transmission Control Protocol Stream.
@@ -203,4 +195,12 @@ impl          Display                   for Path
         )
       )
   }
+}
+
+/// State of the Parser parsing a Path.
+enum          PathState
+{
+  Start,
+  Key,
+  Value,
 }
