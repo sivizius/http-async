@@ -58,7 +58,7 @@ impl          Response
           self.version,
           self.status,
           {
-            let mut result              =   "".to_owned ( );
+            let mut result              =   String::new ( );
             for pair                    in  &self.header
             {
               result

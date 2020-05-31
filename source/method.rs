@@ -1,19 +1,5 @@
 use
 {
-  super::
-  {
-    request::
-    {
-      Request,
-    },
-  },
-  async_std::
-  {
-    net::
-    {
-      TcpStream,
-    },
-  },
   std::
   {
     fmt::
@@ -26,6 +12,7 @@ use
 
 /// Method of this Hyper Text Transfer Protocol Request.
 #[allow(dead_code)]
+#[derive(Debug)]
 pub enum      Method
 {
   /// Placeholder.
@@ -48,88 +35,6 @@ pub enum      Method
   Put,
   /// Perform a Message Loop-Back Test along the Path to the Target Resource.
   Trace,
-}
-
-impl          Method
-{
-  /// Try to parse Hyper Text Transfer Protocol Request Method from Transmission Control Protocol Stream.
-  ///
-  /// # Arguments
-  /// * `stream`                        – Transmission Control Protocol Stream.
-  pub async fn  parse
-  (
-    mut stream:                         &mut TcpStream,
-  )
-  ->  Option  < Method  >
-  {
-    match Request::readChar ( &mut stream )
-    {
-      Some  ( 'C' )
-      =>  Some  ( Method::Connect )
-            .and_then ( | method  | Request::ifChar ( 'O',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'N',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'N',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'C',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) ),
-      Some  ( 'D' )
-      =>  Some  ( Method::Delete  )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'L',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) ),
-      Some  ( 'G' )
-      =>  Some  ( Method::Get     )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) ),
-      Some  ( 'H' )
-      =>  Some  ( Method::Post    )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'A',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'D',  &mut stream,  method  ) ),
-      Some  ( 'O' )
-      =>  Some  ( Method::Options )
-            .and_then ( | method  | Request::ifChar ( 'P',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'I',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'O',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'N',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'S',  &mut stream,  method  ) ),
-      Some  ( 'P' )
-      =>  match Request::readChar ( &mut stream )
-          {
-            Some  ( 'A' )
-            =>  Some  ( Method::Patch   )
-                  .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) )
-                  .and_then ( | method  | Request::ifChar ( 'C',  &mut stream,  method  ) )
-                  .and_then ( | method  | Request::ifChar ( 'H',  &mut stream,  method  ) ),
-            Some  ( 'O' )
-            =>  Some  ( Method::Post    )
-                  .and_then ( | method  | Request::ifChar ( 'S',  &mut stream,  method  ) )
-                  .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) ),
-            Some  ( 'U' )
-            =>  Some  ( Method::Put     )
-                  .and_then ( | method  | Request::ifChar ( 'T',  &mut stream,  method  ) ),
-            _
-            =>  None,
-          },
-      Some  ( 'T' )
-      =>  Some  ( Method::Trace   )
-            .and_then ( | method  | Request::ifChar ( 'R',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'A',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'C',  &mut stream,  method  ) )
-            .and_then ( | method  | Request::ifChar ( 'E',  &mut stream,  method  ) ),
-      Some  ( char  )
-      =>  {
-            println!("Char: {}", char);
-            None
-          },
-      _
-      =>  None,
-    }
-      .and_then ( | method  | Request::ifChar ( ' ',  &mut stream,  method  ) )
-  }
 }
 
 impl          Display                   for Method

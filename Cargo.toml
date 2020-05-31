@@ -1,7 +1,7 @@
 [package]
 name                                    =   "http-async"
 description                             =   "Simple Server, who speaks the Hyper Text Transfer Protocol, with async-std."
-version                                 =   "0.1.2"
+version                                 =   "0.2.0"
 authors                                 =   [
                                               "Sebastian Walz <sivizius@ohai.su>",
                                             ]
@@ -11,7 +11,7 @@ repository                              =   "https://github.com/sivizius/http-as
 documentation                           =   "https://docs.rs/http-async/"
 
 [dependencies]
-async-std                               =   "1.4"
+async-std                               =   "1"
 
 [lib]
 path                                    =   "source/lib.rs"

@@ -10,15 +10,16 @@
 //! MIT
 
 #![warn(clippy::all)]
-#![allow(clippy::suspicious_else_formatting)]
+#![warn(future_incompatible)]
+#![warn(intra_doc_link_resolution_failure)]
+#![warn(missing_docs)]
+#![warn(missing_doc_code_examples)]
+#![warn(unused_results)]
 
+#![allow(clippy::suspicious_else_formatting)]
 #![allow(non_snake_case)]
 #![allow(non_upper_case_globals)]
-#![warn(missing_docs)]
-#![warn(future_incompatible)]
 
-/// Header of Requests and Responses.
-pub mod header;
 /// Protocol Methods.
 pub mod method;
 /// Path and Queries to Resources.
@@ -39,6 +40,10 @@ use
     request::
     {
       Request,
+      parser::
+      {
+        Parser,
+      },
     },
     response::
     {
@@ -59,7 +64,6 @@ use
     {
       SocketAddr,
       TcpListener,
-      ToSocketAddrs,
     },
     prelude::*,
     sync::
@@ -73,35 +77,51 @@ use
   },
   std::
   {
-    fmt::
+    borrow::
     {
-      Display,
+      Cow,
+    },
+    time::
+    {
+      Duration,
+      Instant,
     },
   },
 };
 
 /// Configuration of the HTTP Server.
+#[
+  derive
+  (
+    Clone,
+    Copy,
+    Debug,
+  )
+]
 pub struct    Configuration
 {
   /// Address, on which the Server should listen to.
   pub address:                          SocketAddr,
+  /// Split Key-Value-Pairs of the Query at this character.
+  pub querySeperator:                   u8,
   /// Maximum Bytes of Request Content.
   /// Prevents DOS by Allocation a large Buffer (Header ›Content-Length‹ could contain any decimal value) without ever filling it.
-  pub maxContent:                       usize,
+  pub maxContentLength:                 usize,
   /// Maximum Numbers of Headers.
   /// Prevents Slow Lorris Attacks:
   ///   Client might slowly send Header by Header for ever,
   ///     but because neither the Connection times out nor the Request every ends,
   ///       the Server keeps reading the Stream.
   pub maxHeaderEntries:                 usize,
-  /// Maximum Length of a Header.
+  /// Maximum Length of a single Header Entry.
   pub maxHeaderLength:                  usize,
+  /// Maximum Length of a single Cookie Field in Header.
+  pub maxCookieLength:                  usize,
   /// Maximum Length of Path.
   /// Prevents Slow Lorris Attacks.
   pub maxPathLength:                    usize,
-  /// Maximum Length of Query String.
-  /// Prevents Slow Lorris Attacks.
-  pub maxQueryLength:                   usize,
+  /// Duration, after which reading from TCP-Stream without receiving a `Request` should time out.
+  pub readTimeOut:                      Duration,
 }
 
 /// Just send this content successfully.
@@ -118,7 +138,7 @@ macro_rules!  content
           http_async::status::Status::Ok,
           $Type,
           include_bytes!  ( $Path )
-            .to_vec(),
+          .to_vec(),
         )
       };
 }
@@ -151,6 +171,14 @@ pub fn        Content
   }
 }
 
+/// Copy-on-Write-type of strings.
+pub type      CowStr
+=   Cow
+    <
+      'static,
+      str,
+    >;
+
 /// Simple Key-Value-Pair. E.g. for header-fields, Queries, etc.
 #[derive(Debug)]
 pub struct    KeyValuePair
@@ -169,12 +197,12 @@ pub struct    KeyValuePair
 /// * `handler`                         – handler for Hyper Text Transfer Protocol Requests.
 pub async fn  server
 <
-  Address,
   Data,
   Handler,
+  Promise,
 >
 (
-  address:                              Address,
+  configuration:                        Configuration,
   this:                                 Arc < Data    >,
   handler:                              Arc < Handler >,
 )
@@ -184,7 +212,6 @@ pub async fn  server
       Error,
     >
 where
-  Address:                              ToSocketAddrs + Display + Send + Sync + Clone + 'static,
   Data:                                 Send + Sync + 'static,
   Handler:                              Send + Sync + 'static +
     Fn
@@ -192,96 +219,148 @@ where
       Request,
       Arc < Data  >,
     )
-    ->  Response,
+    -> Promise,
+  Promise:                              Send + Sync + 'static + Future<Output=Response>,
 {
   let     socket
-  =   TcpListener::bind ( &address   )
-        .await
-        .expect ( "Failed to bind"  );
+  =   TcpListener::bind ( &configuration.address   )
+      .await
+      .expect ( "Failed to bind"  );
   println!
   (
     "Waiting for connections on {}",
-    address,
+    configuration.address,
   );
   loop
   {
-    let     this                        =   this.clone    ( );
-    let     handler                     =   handler.clone ( );
-    let     address                     =   address.clone ( );
+    let     this                        =   this.clone          ( );
+    let     handler                     =   handler.clone       ( );
+    let     configuration               =   configuration.clone ( );
+    let     address                     =   configuration.address;
     let
     (
       mut tcpStream,
       client
     )
     =   socket
-          .accept()
-          .await
-          .unwrap();
-    spawn
-    (
-      async move
-      {
-        let mut counter                 =   0;
-        loop
-        {
-          match Request()
-                  .parse
-                  (
-                    &mut tcpStream,
-                  ).await
+        .accept()
+        .await
+        .unwrap();
+    let mut time                        =   Instant::now  ( );
+    let     _
+    =   spawn
+        (
+          async move
           {
-            Ok  ( request )
-            =>  match match tcpStream
-                              .write
-                              (
-                                handler
-                                (
-                                  request,
-                                  this.clone(),
-                                )
-                                  .into_vector  ( )
-                                  .as_slice     ( )
-                              )
-                              .await
+            let mut counter             =   0usize;
+            let mut buffer              =   vec!  [ 0u8;  1024  ];
+            let mut parser              =   Parser  ( configuration );
+            loop
+            {
+              match tcpStream
+                    .read ( &mut  buffer  )
+                    .await
+              {
+                Ok  ( length  )
+                =>  if  length > 0
+                    {
+                      match parser
+                            .feed
+                            (
+                              &buffer,
+                              length,
+                            )
                       {
-                        Ok    ( _     )
-                        =>  tcpStream
-                              .flush().await,
-                        Err   ( error )
-                        =>  Err ( error ),
+                        Ok  ( requests )
+                        =>  if  requests  > 0
+                            {
+                              for request
+                              in  parser.take ( )
+                              {
+                                match match tcpStream
+                                            .write
+                                            (
+                                              handler
+                                              (
+                                                request,
+                                                this.clone(),
+                                              )
+                                              .await
+                                              .into_vector  ( )
+                                              .as_slice     ( )
+                                            )
+                                            .await
+                                      {
+                                        Ok  ( _     ) =>  tcpStream.flush().await,
+                                        Err ( error ) =>  Err ( error ),
+                                      }
+                                {
+                                  Ok  ( _       )
+                                  =>  println!
+                                      (
+                                        "Success! {} -> {} #{}",
+                                        address,
+                                        client,
+                                        counter,
+                                      ),
+                                  Err ( error )
+                                  =>  {
+                                        eprintln!
+                                        (
+                                          "Send Fail: {}",
+                                          error,
+                                        );
+                                        break;
+                                      },
+                                }
+                              }
+                              time      =   Instant::now  ( );
+                            }
+                            else  if  time.elapsed  ( ) > configuration.readTimeOut
+                            {
+                              eprintln!
+                              (
+                                "Reading next Request timed out for {}",
+                                client,
+                              );
+                              break;
+                            },
+                        Err ( error )
+                        =>  {
+                              eprintln!
+                              (
+                                "Parsing Fail: {}\n{:#?}",
+                                error,
+                                parser,
+                              );
+                              break;
+                            },
                       }
-                {
-                  Ok  ( _       )
-                  =>  println!
+                    }
+                    else
+                    {
+                      //  eventually the client closes the connection
+                      println!
                       (
-                        "Success! {} -> {} #{}",
-                        address,
+                        "Empty Packet by {} @ {}. Connection Closed.",
                         client,
-                        counter,
-                      ),
-                  Err ( error )
-                  =>  {
-                        eprintln!
-                        (
-                          "Send Fail: {}",
-                          error,
-                        );
-                        break;
-                      },
-                },
-            Err ( error )
-            =>  {
-                  eprintln!
-                  (
-                    "Input Fail: {}",
-                    error,
-                  );
-                  break;
-                }
+                        address,
+                      );
+                      break;
+                    },
+                Err ( error   )
+                =>  {
+                      eprintln!
+                      (
+                        "Input Fail: {}",
+                        error,
+                      );
+                      break;
+                    },
+              }
+              counter                     +=  1;
+            }
           }
-          counter                       +=  1;
-        }
-      }
-    );
+        );
   }
 }
